@@ -1,0 +1,79 @@
+@ExtendWith(MockitoExtension.class)
+class AsyncGroupServiceImplTest {
+
+    @InjectMocks
+    private AsyncGroupServiceImpl asyncGroupService;
+
+    @Mock
+    private SaviyntClient saviyntClient;
+    @Mock
+    private UserService userService;
+    @Mock
+    private SecurityManagerEntitlementRepository entitlementRepo;
+
+    @BeforeEach
+    void setup() {
+        // mock required repo/entity return to reach exception path
+        when(userService.getFreshAccessToken()).thenReturn("dummy-token");
+        when(entitlementRepo.findAll()).thenReturn(Collections.emptyList()); // not critical
+    }
+
+    @Test
+    void createGroupsAsync_handlesParseException() throws Exception {
+        // Mock entitlement entity
+        SecurityManagerEntitlementEntity entity = new SecurityManagerEntitlementEntity();
+        List<SecurityManagerEntitlementEntity> entities = List.of(entity);
+        when(entitlementRepo.findAll()).thenReturn(entities);
+
+        // Mock SaviyntClient Unauthorized exception
+        FeignException.Unauthorized unauthorizedEx =
+                mock(FeignException.Unauthorized.class);
+
+        // Force parser.parse(ex.contentUTF8()) to throw ParseException
+        when(unauthorizedEx.contentUTF8()).thenReturn("{invalid-json}");
+        doThrow(new ParseException(0))
+                .when(asyncGroupService.parser).parse(anyString()); // spy parser if possible
+
+        try (MockedStatic<ErrorLogEventHelper> logMock = Mockito.mockStatic(ErrorLogEventHelper.class)) {
+            asyncGroupService.createGroupsAsync("token", "header", "clientId", "clientName");
+
+            logMock.verify(() -> ErrorLogEventHelper.logErrorEvent(
+                    anyString(),
+                    contains("Unexpected exception during entitlement update"),
+                    eq("updateEntitlementsOnUser()"),
+                    any(ParseException.class),
+                    eq(ErrorLogEvent.ERROR_SEVERITY)
+            ));
+        }
+    }
+
+    @Test
+    void createGroupsAsync_handlesJsonProcessingException() throws Exception {
+        SecurityManagerEntitlementEntity entity = new SecurityManagerEntitlementEntity();
+        List<SecurityManagerEntitlementEntity> entities = List.of(entity);
+        when(entitlementRepo.findAll()).thenReturn(entities);
+
+        // Mock Unauthorized exception
+        FeignException.Unauthorized unauthorizedEx =
+                mock(FeignException.Unauthorized.class);
+
+        when(unauthorizedEx.contentUTF8()).thenReturn("{valid:json}");
+
+        // Force ObjectMapper.writeValueAsString() to throw JsonProcessingException
+        ObjectMapper spyMapper = Mockito.spy(new ObjectMapper());
+        asyncGroupService.om = spyMapper; // replace with spy mapper
+        doThrow(JsonProcessingException.class).when(spyMapper).writeValueAsString(any());
+
+        try (MockedStatic<ErrorLogEventHelper> logMock = Mockito.mockStatic(ErrorLogEventHelper.class)) {
+            asyncGroupService.createGroupsAsync("token", "header", "clientId", "clientName");
+
+            logMock.verify(() -> ErrorLogEventHelper.logErrorEvent(
+                    anyString(),
+                    contains("Unexpected exception during entitlement update"),
+                    eq("updateEntitlementsOnUser()"),
+                    any(JsonProcessingException.class),
+                    eq(ErrorLogEvent.ERROR_SEVERITY)
+            ));
+        }
+    }
+}
