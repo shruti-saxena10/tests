@@ -1,1 +1,46 @@
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class AsyncGroupServiceImplTest {
+
+    @Test
+    void testCheckValidationBeforeAsyncC_whenTrackEntityStatusNotZero_shouldReturnSuccessCompleted() {
+        // Arrange
+        TrackRepo mockTrackRepo = mock(TrackRepo.class);
+        ConfigBean mockConfigBean = mock(ConfigBean.class);
+        AsyncGroupServiceImpl service = new AsyncGroupServiceImpl(mockTrackRepo, mockConfigBean);
+
+        String sessionToken = "dummyToken";
+        String requestHeader = "validHeader";
+        String clientId = "client123";
+        String clientName = "testClient";
+
+        // mock RequestHeader
+        RequestHeader mockParsedHeader = mock(RequestHeader.class);
+        when(mockParsedHeader.getCorrelationId()).thenReturn("corr-123");
+
+        try (MockedStatic<RequestHeader> mocked = mockStatic(RequestHeader.class)) {
+            mocked.when(() -> RequestHeader.parse(anyString()))
+                  .thenReturn(mockParsedHeader);
+
+            // mock trackRepo to return entity with non-zero status
+            ClientOnboardingRequestTrackEntity mockEntity = new ClientOnboardingRequestTrackEntity();
+            mockEntity.setStatus(1); // <-- non-zero to hit the "else" branch
+            when(mockTrackRepo.findByCorrelationIdAndClientId("corr-123", clientId))
+                    .thenReturn(mockEntity);
+
+            // Act
+            CreateGroupsResponse response =
+                    service.checkValidationBeforeAsyncC(sessionToken, requestHeader, clientId, clientName);
+
+            // Assert
+            assertNotNull(response, "Response should not be null");
+            assertEquals(StartAnyWhereConstants.HTTP_STATUS_SUCCESS, response.getResponseCode());
+            assertEquals(StartAnyWhereConstants.REQUEST_COMPLETED_SUCCESSFULLY, response.getResponseDescription());
+        }
+    }
+}
 
