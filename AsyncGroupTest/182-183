@@ -1,0 +1,28 @@
+@ExtendWith(MockitoExtension.class)
+class AsyncGroupServiceImplTest {
+
+    @InjectMocks
+    private AsyncGroupServiceImpl asyncGroupService;
+
+    @Mock
+    private ClientOnboardingRequestTrackService clientOnboardingRequestTrackService;
+
+    @BeforeEach
+    void setup() {
+        // no-op
+    }
+
+    @Test
+    void createGroupsAsync_callsUpdateTrackAndLogsInfo() {
+        String requestHeader = "req-123";
+        String clientId = "C123";
+        String clientName = "TestClient";
+
+        CreateGroupsResponse createGroupsResponse = new CreateGroupsResponse();
+        createGroupsResponse.setClientId(clientId);
+        createGroupsResponse.setClientName(clientName);
+
+        // Spy AsyncGroupServiceImpl so we can verify updateTrack
+        AsyncGroupServiceImpl spyService = Mockito.spy(asyncGroupService);
+
+        try (MockedStatic<InfoTypeLogEventHelper> logMock =
