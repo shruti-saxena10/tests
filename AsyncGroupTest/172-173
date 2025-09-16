@@ -1,0 +1,40 @@
+@ExtendWith(MockitoExtension.class)
+class AsyncGroupServiceImplTest {
+
+    @InjectMocks
+    private AsyncGroupServiceImpl asyncGroupService;
+
+    @Mock
+    private SaviyntClient saviyntClient;
+
+    @Mock
+    private UserService userService;
+
+    @BeforeEach
+    void setup() {
+        when(userService.getFreshAccessToken()).thenReturn("dummy-token");
+    }
+
+    @Test
+    void createGroupsAsync_logsError_whenUnexpectedExceptionOccurs() {
+        // Arrange: force saviyntClient to throw RuntimeException
+        when(saviyntClient.updateEntitlementsOnUser(anyString(), any()))
+                .thenThrow(new RuntimeException("boom"));
+
+        try (MockedStatic<ErrorLogEventHelper> logMock =
+                     Mockito.mockStatic(ErrorLogEventHelper.class)) {
+
+            // Act
+            asyncGroupService.createGroupsAsync("token", "header", "clientId", "clientName");
+
+            // Assert: verify logErrorEvent was called
+            logMock.verify(() -> ErrorLogEventHelper.logErrorEvent(
+                    anyString(),
+                    contains("Unexpected exception during entitlement update"),
+                    eq("updateEntitlementsOnUser()"),
+                    any(RuntimeException.class),
+                    eq(ErrorLogEvent.ERROR_SEVERITY)
+            ));
+        }
+    }
+}
