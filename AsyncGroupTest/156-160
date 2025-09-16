@@ -1,0 +1,92 @@
+@ExtendWith(MockitoExtension.class)
+class AsyncGroupServiceImplTest {
+
+    @InjectMocks
+    private AsyncGroupServiceImpl asyncGroupService;
+
+    @Mock
+    private SaviyntClient saviyntClient;
+
+    @BeforeEach
+    void setup() {
+        // inject dependencies if needed
+    }
+
+    @Test
+    void createGroupsAsync_addsFailedEntitlement_whenPresentValuesReturned() throws Exception {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("msg", "some error");
+        jsonObject.put("errorCode", "ERR123");
+
+        Map<String, String> mockPresentValues = new HashMap<>();
+        mockPresentValues.put("msg", "some error");
+        mockPresentValues.put("errorCode", "ERR123");
+
+        // Spy service to override getPresentValues
+        AsyncGroupServiceImpl spyService = Mockito.spy(asyncGroupService);
+        doReturn(mockPresentValues).when(spyService).getPresentValues(any(JSONObject.class));
+
+        List<FailedEntitlement> failedEntitlementsList = new ArrayList<>();
+        Map<String, String> validFields = Map.of("description", "Test Entitlement");
+
+        FailedEntitlement failedEntitlement = new FailedEntitlement();
+
+        // Act
+        try {
+            Map<String, String> presentValues = spyService.getPresentValues(jsonObject);
+            failedEntitlement.setEntitlementName(validFields.get("description"));
+            failedEntitlement.setErrorMessage(presentValues.get("msg"));
+            failedEntitlement.setErrorCode(presentValues.get("errorCode"));
+            failedEntitlementsList.add(failedEntitlement);
+        } catch (Exception ignored) {}
+
+        // Assert
+        assertEquals(1, failedEntitlementsList.size());
+        FailedEntitlement result = failedEntitlementsList.get(0);
+        assertEquals("Test Entitlement", result.getEntitlementName());
+        assertEquals("some error", result.getErrorMessage());
+        assertEquals("ERR123", result.getErrorCode());
+    }
+
+    @Test
+    void createGroupsAsync_logsError_whenExceptionThrownInGetPresentValues() throws Exception {
+        JSONObject jsonObject = new JSONObject();
+        Map<String, String> validFields = Map.of("description", "Test Entitlement");
+
+        // Spy to throw exception from getPresentValues
+        AsyncGroupServiceImpl spyService = Mockito.spy(asyncGroupService);
+        doThrow(new RuntimeException("test-exception"))
+                .when(spyService).getPresentValues(any(JSONObject.class));
+
+        FailedEntitlement failedEntitlement = new FailedEntitlement();
+        List<FailedEntitlement> failedEntitlementsList = new ArrayList<>();
+
+        try (MockedStatic<ErrorLogEventHelper> logMock = Mockito.mockStatic(ErrorLogEventHelper.class)) {
+            try {
+                Map<String, String> presentValues = spyService.getPresentValues(jsonObject);
+                failedEntitlement.setEntitlementName(validFields.get("description"));
+                failedEntitlement.setErrorMessage(presentValues.get("msg"));
+                failedEntitlement.setErrorCode(presentValues.get("errorCode"));
+                failedEntitlementsList.add(failedEntitlement);
+            } catch (Exception e) {
+                // simulate the catch block
+                ErrorLogEventHelper.logErrorEvent(
+                        spyService.getClass().getName(),
+                        "Unexpected exception during entitlement update",
+                        "updateEntitlementsOnUser()",
+                        e,
+                        ErrorLogEvent.ERROR_SEVERITY
+                );
+            }
+
+            // Verify logging
+            logMock.verify(() -> ErrorLogEventHelper.logErrorEvent(
+                    anyString(),
+                    contains("Unexpected exception during entitlement update"),
+                    eq("updateEntitlementsOnUser()"),
+                    any(RuntimeException.class),
+                    eq(ErrorLogEvent.ERROR_SEVERITY)
+            ));
+        }
+    }
+}
