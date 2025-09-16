@@ -1,5 +1,5 @@
 @Test
-void testCreateGroupsAsync_Unauthorized_ParseException() throws Exception {
+void testCreateGroupsAsync_FeignExceptionValidJson() throws Exception {
     // Arrange
     List<SecurityManagerEntitlementEntity> entities = List.of(new SecurityManagerEntitlementEntity());
     entities.get(0).setDisplayName("Group-<ClientID>");
@@ -7,11 +7,11 @@ void testCreateGroupsAsync_Unauthorized_ParseException() throws Exception {
     when(entitlementRepo.findAll()).thenReturn(entities);
     when(userService.getFreshAccessToken()).thenReturn("access123");
 
-    // Mock unauthorized exception with invalid JSON that triggers ParseException
-    FeignException.Unauthorized unauthorized = mock(FeignException.Unauthorized.class);
-    when(unauthorized.contentUTF8()).thenReturn("invalid-json");
+    String validJson = "{\"msg\":\"Some error occurred\",\"errorCode\":\"400\"}";
+    FeignException feign = mock(FeignException.class);
+    when(feign.contentUTF8()).thenReturn(validJson);
 
-    when(saviyntClient.updateEntitlementsOnUser(any(), any())).thenThrow(unauthorized);
+    when(saviyntClient.updateEntitlementsOnUser(any(), any())).thenThrow(feign);
 
     try (MockedStatic<StartAnywhereSecurityUtil> secUtil = mockStatic(StartAnywhereSecurityUtil.class)) {
         secUtil.when(() -> StartAnywhereSecurityUtil.unCleanIt(any())).thenReturn("{}");
