@@ -1,0 +1,22 @@
+@Test
+void getAccounts_returnsEmptyList_whenSaviyntReturnsNull() {
+    String username = "user";
+    String accessToken = "token";
+
+    GetAccountsResponse response = new GetAccountsResponse();
+    response.setStatusCode(HttpStatus.OK.value());
+    response.setAccountDetails(null); // triggers Collections.emptyList()
+
+    try (MockedStatic<StartAnywhereUtil> utilMock = Mockito.mockStatic(StartAnywhereUtil.class)) {
+        when(saviyntClient.getAccounts(anyString(), any(GetAccountsRequest.class)))
+                .thenReturn(response);
+
+        utilMock.when(() -> StartAnywhereUtil.calculateSaviyntStatusCode(HttpStatus.OK.value()))
+                .thenReturn(HttpStatus.OK.value());
+
+        List<AccountDTO> result = accountService.getAccounts(username, accessToken);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());  // ✅ verifies Collections.emptyList()
+    }
+}
